@@ -1,0 +1,643 @@
+#! /bin/python3
+
+import pymongo
+import json
+import sys
+import os
+import secrets
+import string
+import subprocess
+from cryptography.fernet import Fernet
+
+try:
+    class starter:
+        def __init__(self):
+            print("\n\n-----------------------------------------------------")
+            print("                                                   __ ")
+            print("    ____  ____  ____ ____ _      _  ___  _____ ___/ /")                                            
+            print("   / __ \/ __ `/ ___/ ___/ | /| / / __ \/ ___/ __  / ")
+            print("  / /_/ / /_/ (__  |__  )| |/ |/ / /_/ / /  / /_/ /   ")
+            print(" / .___/\__,_/____/____/ |__/|__/\____/_/   \__,_/    ")
+            print("/_/____ ____  ____  ___  _________ _/ /_____  ____  ")
+            print( "/ __ `/ _ \/ __ \/ _ \/ ___/ __ `/ __/ __ \/ ___/   ")
+            print("/ /_/ /  __/ / / /  __/ /  / /_/ / /_/ /_/ / / _     ")
+            print("\__, /\___/_/ /_/\___/_/   \__,_/\__/\____/_/        ")
+            print("/___/                                              ")
+            
+            print("\n\n-------------------------------------------------------------------------")
+            print("[+]  This Tool is Developed by Praveen M S")
+            print("[+]  Github: https://github.com/Praveenms13/PasswordManager-cmdline-tool")
+            print("[+]  Portfolio: https://rootwitch.praveenms.site")
+            print("-------------------------------------------------------------------------\n\n")
+            argsObj = arguement(sys.argv)
+            if argsObj.countOptions() <= 1:
+                print("This Tool doesn't works without any operation..")
+                print("Help: pass --help")
+                self.printHelp()
+                exit()
+            if argsObj.hasOptions(["--help", "-h"]):
+                print("help........")
+                self.printHelp()
+            if argsObj.hasOptions(["--edit", "-e"]):
+                print(
+                    "\nCautious!! This will edit the connection url which is in config.json file\n"
+                )
+                print(
+                    "Mongo Connection url looks like: mongodb+srv://<username>:<password>@<cluster url>"
+                )
+                print("Avoid the database name with the url\n")
+                print(
+                    "Also add your public ip address to the cluster in the 'network access' tab in mongodb atlas"
+                )
+                print(
+                    "You can find your public ip address by searching 'what is my ip' in google\n"
+                )
+                mongoUrl = argsObj.getOptionValue("--edit")
+                if mongoUrl == None:
+                    mongoUrl = argsObj.getOptionValue("-e")
+                if mongoUrl == None:
+                    mongoUrl = input("Enter the mongo connection url: ")
+
+                if mongoUrl.startswith("mongodb+srv://"):
+                    data = {"mongoConnectionUrl": mongoUrl}
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    with open(f"{current_dir}/config.json", "w") as json_file:
+                        json.dump(data, json_file)
+                    print("JSON file has been edited succesfully.\n")
+                    print("Run the program again to establish a new connection.")
+                    exit()
+                else:
+                    print("Wrong url....")
+                    self.mongoDBObj.exit_program()
+
+        def printHelp(self):
+            print("\nSection 1: To Manage the credentials in database")
+            help_message = """
+            Usage: passlock [options]
+
+            Options:
+            --addCredentials, -ac    Add credentials to the database.
+                                    Requires the following additional options:
+                                    --platform, -pl     Specify the platform (required).
+                                    --username, -u      Specify the username (required).
+                                    --password, -pa     Specify the password.
+
+            --getCredentials, -gc    Get credentials from the database.
+                                    Requires the following additional options:
+                                    --platform, -pl     Specify the platform (required).
+                                    --username, -u      Specify the username (required).
+
+            --getCredentialsPlatform, -gcp
+                                    Get credentials from the database based on platform.
+                                    Requires the following additional option:
+                                    --platform, -pl     Specify the platform (required).
+
+            --deleteCredentials, -dc
+                                    Delete credentials from the database.
+                                    Requires the following additional options:
+                                    --platform, -pl     Specify the platform (required).
+                                    --username, -u      Specify the username (required).
+
+            --updateCredentials, -uc
+                                    Update credentials in the database.
+                                    Requires the following additional options:
+                                    --platform, -pl     Specify the platform (required).
+                                    --username, -u      Specify the username (required).
+
+            --generatepassword, -gp  Generate a password.
+                                    Requires the following additional options:
+                                    --generatepassword, -gp   Specify the password type (required).
+                                    --length, -l               Specify the password length.
+
+            --save, -s               Save the generated password to the database.
+                                    Note: Requires platform, username, and comment.
+
+            --copy, -cp              Copy the generated password to the clipboard.
+
+            Note:
+            - For options that require values, you can use either the long or short form.
+            For example, --platform or -pl.
+            - Make sure to provide the required options for each command.
+            - The script will exit after executing each command.
+            """
+            print(help_message)
+            print("\nSection 2: To Generate a new password and save it in database")
+            help_message = """
+            Usage: passlock [options]
+
+            Options:
+            --generatepassword, -gp <condition>    Generate a new password.
+                                                Available conditions: alphanumeric, alphabets, numeric, symbols.
+            --save, -s                            Save the generated password in the database.
+            --copy, -cp                           Copy the generated password to clipboard.
+            --length, -l <num>                    Specify the length of the password.
+
+            Order of execution: python script.py -gp=<condition> -l=<num> -s -cp
+
+            Example usage:
+            python script.py -gp=alphanumeric -l=10 -s -cp
+                Generates a new alphanumeric password with a length of 10 characters,
+                saves it in the database, and copies it to the clipboard.
+
+            Note:
+            - The script will exit after executing each command.
+            """
+            print(help_message)
+            exit(-1)
+
+    class arguement:
+        def __init__(self, args):
+            self.commands = []
+            self.options = []
+            self.optionValues = {}
+            self.args = args
+            for arg in args:
+                if "-" in arg or "--" in arg:
+                    if "=" in arg:
+                        pair = arg.split("=")
+                        self.options.append(pair[0])
+                        self.optionValues[pair[0]] = pair[1]
+                    else:
+                        self.options.append(arg)
+                else:
+                    self.commands.append(arg)
+
+        def hasOptions(self, options=list):
+            userOptions = set(self.options)
+            requiredOptions = set(options)
+            return len(list(requiredOptions & userOptions)) >= 1
+
+        def getOptionValue(self, option):
+            if option in self.optionValues:
+                return self.optionValues[option]
+            else:
+                return None
+
+        def countOptions(self):
+            return len(self.options)
+
+    class PasswordManager:
+        def __init__(self, mongoObj=None, collection=None):
+            self.argsObj = arguement(sys.argv)
+            self.mongoDBObj = mongoDB()
+            argsObj = self.argsObj
+            if argsObj.hasOptions(["--addCredentials", "-ac"]):
+                if argsObj.hasOptions(["--platform", "-pl"]):
+                    platform = argsObj.getOptionValue("--platform")
+                    if platform == None:
+                        platform = argsObj.getOptionValue("-pl")
+                    platform = platform.lower().replace(" ", "_")
+                else:
+                    print("Platform is required.")
+                    platform = str(input("Enter the platform> "))
+                    platform = platform.lower().replace(" ", "_")
+                    platform = platform.strip()
+                if argsObj.hasOptions(["--username", "-u"]):
+                    username = argsObj.getOptionValue("--username")
+                    if username == None:
+                        username = argsObj.getOptionValue("-u")
+                    username = username.strip()
+                else:
+                    print("Username is required.")
+                    username = str(input("Enter the username> "))
+                    username = username.strip()
+                if argsObj.hasOptions(["--password", "-pa"]):
+                    password = argsObj.getOptionValue("--password")
+                    if password == None:
+                        password = argsObj.getOptionValue("-pa")
+                else:
+                    print("Password is required.")
+                    password = str(input("Enter the password> "))
+                    password = password.strip()
+                if (
+                    platform is not None
+                    and username is not None
+                    and password is not None
+                ):
+                    self.mongoDBObj.add_credentials(
+                        collection=collection,
+                        platform=platform,
+                        username=username,
+                        password=password,
+                    )
+                    self.mongoDBObj.exit_program()
+                else:
+                    print("Platform, username, and password are required.")
+                    self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--getCredentials", "-gc"]):
+                if argsObj.hasOptions(["--platform", "-pl"]):
+                    platform = argsObj.getOptionValue("--platform")
+                    if platform == None:
+                        platform = argsObj.getOptionValue("-pl")
+                    platform = platform.lower().replace(" ", "_")
+                else:
+                    print("Platform is required.")
+                    self.mongoDBObj.exit_program()
+                if argsObj.hasOptions(["--username", "-u"]):
+                    username = argsObj.getOptionValue("--username")
+                    if username == None:
+                        username = argsObj.getOptionValue("-u")
+                    username = username.strip()
+                else:
+                    print("Username is required.")
+                    self.mongoDBObj.exit_program()
+                if platform is not None and username is not None:
+                    self.mongoDBObj.get_creds_all(
+                        collection=collection, platform=platform, username=username
+                    )
+                    self.mongoDBObj.exit_program()
+                else:
+                    print("Platform and username are required.")
+                    self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--getCredentialsPlatform", "-gcp"]):
+                if argsObj.hasOptions(["--platform", "-pl"]):
+                    platform = argsObj.getOptionValue("--platform")
+                    if platform == None:
+                        platform = argsObj.getOptionValue("-pl")
+                    platform = platform.lower().replace(" ", "_")
+                else:
+                    print("Platform is required.")
+                    self.mongoDBObj.exit_program()
+                if platform is not None:
+                    self.mongoDBObj.get_creds_only_platform(
+                        collection=collection, platform=platform
+                    )
+                    self.mongoDBObj.exit_program()
+                else:
+                    print("Platform is required.")
+                    self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--deleteCredentials", "-dc"]):
+                if argsObj.hasOptions(["--platform", "-pl"]):
+                    platform = argsObj.getOptionValue("--platform")
+                    if platform == None:
+                        platform = argsObj.getOptionValue("-pl")
+                    platform = platform.lower().replace(" ", "_")
+                else:
+                    print("Platform is required.")
+                    self.mongoDBObj.exit_program()
+                if argsObj.hasOptions(["--username", "-u"]):
+                    username = argsObj.getOptionValue("--username")
+                    if username == None:
+                        username = argsObj.getOptionValue("-u")
+                    username = username.strip()
+                else:
+                    print("Username is required.")
+                    self.mongoDBObj.exit_program()
+                if platform is not None and username is not None:
+                    self.mongoDBObj.delete_creds(
+                        collection=collection, platform=platform, username=username
+                    )
+                    self.mongoDBObj.exit_program()
+                else:
+                    print("Platform and username are required.")
+                    self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--updateCredentials", "-uc"]):
+                if argsObj.hasOptions(["--platform", "-pl"]):
+                    platform = argsObj.getOptionValue("--platform")
+                    if platform == None:
+                        platform = argsObj.getOptionValue("-pl")
+                    platform = platform.lower().replace(" ", "_")
+                else:
+                    print("Platform is required.")
+                    self.mongoDBObj.exit_program()
+                if argsObj.hasOptions(["--username", "-u"]):
+                    username = argsObj.getOptionValue("--username")
+                    if username == None:
+                        username = argsObj.getOptionValue("-u")
+                    username = username.strip()
+                else:
+                    print("Username is required.")
+                    self.mongoDBObj.exit_program()
+                if platform is not None and username is not None:
+                    self.mongoDBObj.update_creds(
+                        collection=collection, platform=platform, username=username
+                    )
+                    self.mongoDBObj.exit_program()
+                else:
+                    print("Platform and username are required.")
+                    self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--generatepassword", "-gp"]):
+                passtype = argsObj.getOptionValue("--generatepassword")
+                if passtype == None:
+                    passtype = argsObj.getOptionValue("-gp")
+                if passtype == "symbols":
+                    passtype = "punctuation"
+                length = argsObj.getOptionValue("--length")
+                if length == None:
+                    length = argsObj.getOptionValue("-l")
+                if argsObj.hasOptions(["--save", "-s"]):
+                    print(
+                        "To Save Password the password you should give the platform, username, and comment"
+                    )
+                    choice = input("Do you want to continue? (y/n): ")
+                    if choice == "y":
+                        print("\nGenerating Password with save option")
+                        generatedPasword = self.genPass(
+                            length=length, passtype=passtype
+                        )
+                        platform = input("Enter the platform: ")
+                        username = input("Enter the username: ")
+                        self.mongoDBObj.add_credentials(
+                            platform=platform,
+                            username=username,
+                            collection=collection,
+                            password=generatedPasword,
+                        )
+                        if argsObj.hasOptions(["--copy", "-cp"]):
+                            print("Copying Password...")
+                            self.copyPassToClipboard(generatedPasword)
+                        exit()
+                    else:
+                        self.mongoDBObj.exit_program()
+                else:
+                    print("Generating Password without save option")
+                    generatedPasword = self.genPass(length=length, passtype=passtype)
+                    if argsObj.hasOptions(["--copy", "-cp"]):
+                        print("Copying Password...")
+                        self.copyPassToClipboard(generatedPasword)
+                    exit()
+            print("[-] Invalid Options")
+            print("[-] Use --help for more info")
+            print("Exiting....")
+            self.mongoDBObj.exit_program()
+            if argsObj.hasOptions(["--copy", "-cp"]):
+                print("Copying Password...")
+                self.copyPassToClipboard(password)
+                exit()
+        def genPass(self, length=None, passtype=None):
+            length = self.lenSetter(length)
+            length = int(length)
+            if passtype == None or passtype == "alphanumsym":
+                characters = string.ascii_letters + string.digits + string.punctuation
+                password = "".join(secrets.choice(characters) for _ in range(length))
+            elif passtype == "alphanumeric":
+                characters = string.ascii_letters + string.digits
+                password = "".join(secrets.choice(characters) for _ in range(length))
+            elif passtype == "alphabets":
+                characters = string.ascii_letters
+                password = "".join(secrets.choice(characters) for _ in range(length))
+            elif passtype == "digits":
+                characters = string.digits
+                password = "".join(secrets.choice(characters) for _ in range(length))
+            elif passtype == "punctuation":
+                characters = string.punctuation
+                password = "".join(secrets.choice(characters) for _ in range(length))
+            else:
+                print("Invalid password type.")
+                self.mongoDBObj.exit_program()
+            print("\nPassword Type: ", passtype)
+            print("Generated Password: ", password)
+            print("\n")
+            return password
+
+        def copyPassToClipboard(self, password):
+            try:
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=password,
+                    encoding="utf-8",
+                )
+                print("Password copied to clipboard successfully!")
+            except Exception as e:
+                print("Error occurred while copying password to clipboard:", str(e))
+
+        def lenSetter(self, length=None):
+            if length is None:
+                password_length = 13
+            else:
+                password_length = length
+            return password_length
+
+    class mongoDB:
+        def __init__(self):
+            pass
+
+        def ask_question(self):
+            question = input(
+                "\nWhat do you want to do?\n1. Add new credentials, \n2. Get credentials with only platform, \n3. Get credentials with platform and username, \n4. Delete credentials, \n5. Update credentials, \n6. Exit\n\nEnter your choice: "
+            )
+            return question
+
+        def get_connection(self):
+            try:
+                if "mongoConnectionUrl" not in self.get_json_data():
+                    print(
+                        "No connection URL found in config.json file, please add it and try again"
+                    )
+                    exit()
+
+                print("\nEstablishing a new connection...")
+                connection = pymongo.MongoClient(
+                    self.get_json_data()["mongoConnectionUrl"]
+                )
+                connection.server_info()
+                return connection
+
+            except pymongo.errors.PyMongoError:
+                print("Connection failed.. => error message from mongoDB class()")
+                return None
+
+        def get_json_data(self):
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            with open(
+                f"{current_dir}/config.json",
+                "r",
+            ) as f:
+                data = json.load(f)
+            return data
+
+        def create_database(self, conn):
+            if conn is not None:
+                # print("Existing connection-------------------------------------------------------------- from create_database")
+                return conn["PassWordManager"]
+            else:
+                # print("New connection------------------------------------------------------------------ from create_database")
+                return self.get_connection()["PassWordManager"]
+
+        def create_collection(self, db):
+            return db["PassWords"]
+
+        def encrypt_password(self, password, key):
+            cipher = Fernet(key)
+            encrypted_password = cipher.encrypt(password.encode("utf-8"))
+            return encrypted_password
+
+        def decrypt_password(self, password, key):
+            cipher = Fernet(key)
+            decrypted_password = cipher.decrypt(password)
+            return decrypted_password.decode("utf-8")
+
+        def add_credentials(
+            self, collection, platform=None, username=None, password=None, comment=None
+        ):
+            print("\nAdd new credentials..")
+            if platform == "" or platform == " ":
+                platform = None
+            if username == "" or username == " ":
+                username = None
+            if password == "" or password == " ":
+                password = None
+            if platform is None:
+                print("Platform is required.")
+                self.exit_program()
+            if username is None:
+                print("Username is required.")
+                self.exit_program()
+            if password is None:
+                print("Password is required.")
+                self.exit_program()
+            print(
+                f"\nData to be added:\nPlatform: {platform}\nComment: {comment}\nUsername: {username}\nPassword: {password}"
+            )
+            key = Fernet.generate_key()
+            password = self.encrypt_password(password, key)
+            creation = collection.insert_one(
+                {
+                    "Platform": platform,
+                    "Comment": comment,
+                    "Username": username,
+                    "Password": password,
+                    "Key": key,
+                }
+            )
+            if creation:
+                print("\nData added successfully.")
+            else:
+                print("Failed to add data.")
+
+        def get_creds_only_platform(self, collection, platform=None):
+            print("\nGet credentials with only platform..")
+            if platform == "" or platform == " ":
+                platform = None
+            if platform is None:
+                print("Platform is required.")
+                self.exit_program()
+            datas = list(collection.find({"Platform": platform}))
+            if datas:
+                for i, data in enumerate(datas, start=1):
+                    data["_id"] = str(data["_id"])
+                    print(f"Available Data {i}:")
+                    data["Password"] = self.decrypt_password(
+                        data["Password"], data["Key"]
+                    )
+                    data.pop("Key")
+                    print(json.dumps(data, indent=4))
+            else:
+                print("\nNo data found.")
+
+        def get_creds_all(self, collection, platform=None, username=None):
+            print("\nGet credentials with platform and username..")
+            if platform == "" or platform == " ":
+                platform = None
+            if username == "" or username == " ":
+                username = None
+            if platform is None:
+                print("Platform is required.")
+                self.exit_program()
+            if username is None:
+                print("Username is required.")
+                self.exit_program()
+            data = collection.find_one({"Platform": platform, "Username": username})
+            if data:
+                data["_id"] = str(data["_id"])
+                print("\nAvailable Data:")
+                data["Password"] = self.decrypt_password(data["Password"], data["Key"])
+                data.pop("Key")
+                
+                print(json.dumps(data, indent=4))
+            else:
+                print("\nNo data found.")
+
+        def delete_creds(self, collection, platform=None, username=None):
+            print("\nDelete credentials..")
+            if platform == "" or platform == " ":
+                platform = None
+            if username == "" or username == " ":
+                username = None
+            if platform is None:
+                print("Platform is required.")
+                self.exit_program()
+            if username is None:
+                print("Username is required.")
+                self.exit_program()
+            data = collection.find_one({"Platform": platform, "Username": username})
+            if data:
+                data["_id"] = str(data["_id"])
+                data["Password"] = self.decrypt_password(data["Password"], data["Key"])
+                data.pop("Key")
+                print(json.dumps(data, indent=4))
+                choice = input("Are you sure you want to delete the data? (y/n): ")
+                if choice == "y":
+                    collection.delete_one({"Platform": platform, "Username": username})
+                    print("Data deleted successfully.")
+                elif choice == "n":
+                    print("Data not deleted.")
+                else:
+                    print("Invalid choice.")
+            else:
+                print("\nNo data found.")
+
+        def update_creds(self, collection, username=None, platform=None):
+            print("\nUpdate credentials..")
+            if platform == "" or platform == " ":
+                platform = None
+            if username == "" or username == " ":
+                username = None
+            if platform is None:
+                print("Platform is required.")
+                self.exit_program()
+            if username is None:
+                print("Username is required.")
+                self.exit_program()
+            data = collection.find_one({"Platform": platform, "Username": username})
+            if data:
+                data["Password"] = self.decrypt_password(data["Password"], data["Key"])
+                exis_pass = data["Password"]
+                print("Existing password: ", exis_pass)
+                password = input("Enter the new password: ")
+                password = self.encrypt_password(password, data["Key"])
+                key = data.get("Key")  # Assuming data is a dictionary
+                collection.update_one(
+                    {"Platform": platform, "Username": username},
+                    {"$set": {"Password": password, "Key": key}},
+                )
+                print("Password updated successfully.\n")
+            else:
+                print("No data found for the given platform and username.")
+
+        def exit_program(self):
+            print("\nExiting...")
+            exit()
+
+    def main():
+        try:
+            starterClass = starter()
+            mongo = mongoDB()
+            connection = mongo.get_connection()
+            if connection:
+                database = mongo.create_database(connection)
+                collection = mongo.create_collection(database)
+                cmdExecObj = PasswordManager(mongoObj=mongo, collection=collection)
+                # print("Invalid Operation.")
+                # print("Help: pass --help")
+                # starterClass.printHelp()
+            else:
+                print("Connection failed.")
+                print(
+                    "Please check the connection url in config.json file and update it"
+                )
+                mongo.exit_program()
+        except KeyboardInterrupt:
+            mongo.exit_program()
+
+    if __name__ == "__main__":
+        main()
+    else:
+        print("This module is not meant to be imported.")
+except Exception as e:
+    # Handle the exception and print the error message
+    print("A minor error occurred:")
+    print(e)
+    print(
+        "Contact the developer for more info or raise an issue on github or run the program again."
+    )
